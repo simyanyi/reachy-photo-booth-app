@@ -157,6 +157,12 @@ async def wait_for_event(
                     )
                     continue
                 if (
+                    isinstance(message, ToolStatus)
+                    and expected_status == ToolStatus.TOOL_CALL_PROCESSED
+                    and message.status == ToolStatus.TOOL_CALL_FAILED
+                ):
+                    raise RuntimeError(message.response or "Tool request rejected")
+                if (
                     expected_status is not None
                     and getattr(message, "status", None) != expected_status
                 ):

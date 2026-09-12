@@ -22,14 +22,9 @@ wake_up:
 
 look_at_human:
   started:
-    - "Cool! Now let me work my magic and take your picture. Strike a pose and stay still."
-    - "Alright, I'll do a little magic and snap your photo. Give me your best pose and hold still for me!"
-    - "Awesome! Let me capture your image—show me your coolest pose and stay still for a moment."
-    - "Perfect! Strike your best pose and stay still while I work my magic."
-    - "Great! Give me a fabulous pose and hold it steady while I create your picture."
-    - "Fantastic! I'll wave my wand and take your photo—strike a pose and freeze!"
-    - "Wonderful, time for a little magic! Show me your favorite pose and hold perfectly still."
-    - "Ready? Strike a pose, say cheese, and hold that look!"
+    - "Taking your photo now. I'll process it straight away."
+    - "One photo, then I'll create your image. Hold still for a moment."
+
   completed:
     - "That picture turned out amazing!"
     - "You absolutely rocked that photo!"

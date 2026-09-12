@@ -96,3 +96,49 @@ room_mapping:
 ```
 
 ![Reachy Coordinate System Top View](../docs/images/reachy-coordinate-system-top-view.png)
+
+## Speaking and photo capture behavior
+
+Speech uses `talkingForward`, a five-second looping animation with gentle ±6°
+pitch nods, antenna movement, and no animated body yaw, head yaw, or roll.
+The `look_direction` argument no longer selects shoulder-turning clips. Active
+person-tracking motion is paused during speech and resumed afterward only when
+still in the tracking state. Existing compositor joint limits still apply.
+
+A photo request searches for a person and requires a new person detection
+before entering photo preparation. The tracker stays enabled during speech and
+the countdown, even while tracking motion is paused. A second new detection is
+required after the countdown before the capture tool is acknowledged. Missing people cancel the request instead of taking a photo anyway.
+`center_user_timeout` limits each fresh-detection wait; the complete agent preparation
+has a 45-second limit (below the agent's 60-second acknowledgement timeout).
+The remote-control photo sequence also uses the detection checks and a bounded
+30-second wait. Its existing action is a photo animation, not an HTTP capture.
+
+Capture uses `workmesh.photo_gate.PhotoGate` to require a valid person detection
+received within 1.5 seconds. It does not require the full-body box to be centered:
+the motion tracker targets the nose/neck instead, and those centers differ.
+Duplicate frames do not refresh presence. The camera also checks the detected frame index against its current
+stream before serving `/capture`. The camera preview remains available while
+searching. Locked body/head limits may require the person to step into view.
+
+After updating, rebuild the affected service images from the repository root:
+
+```bash
+docker compose up -d --build --no-deps agent camera interaction-manager animation-database
+```
+
+Hardware-free regression checks:
+
+```bash
+python3 -m unittest discover -s tests/unit -v
+```
+
+These tests cover the shared detection gate and service control flow with mocked
+hardware and messaging. Live camera, robot motion, and Kafka integration still
+need checking on the running booth.
+
+After capture, the original agent decision flow, image-generation prompt building,
+processing comments, completion speech, QR handling, and farewell remain in place.
+The original capture-to-generation workflow instructions are restored. There is
+no separate forced-processing node or replacement image-prompt writer. Creative
+preference questions still happen before capture.

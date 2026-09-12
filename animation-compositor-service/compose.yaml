@@ -33,13 +33,21 @@ services:
       - /run/user/1000/pipewire-0.lock:/run/user/1000/pipewire-0.lock
       - /run/user/1000/pipewire-0-manager:/run/user/1000/pipewire-0-manager
       - /run/user/1000/pipewire-0-manager.lock:/run/user/1000/pipewire-0-manager.lock
-    #configs:
-    #  - source: config_animation_compositor
-    #    target: /config.yaml
+    configs:
+     - source: config_animation_compositor
+       target: /config.yaml
 
-#configs:
-#  config_animation_compositor:
-#    content: |
-#      audio_config:
-#        output_devices_index_or_name: ["Reachy Mini Audio"]
-#        sample_rate: 16000
+configs:
+  config_animation_compositor:
+    content: |
+      audio_config:
+        output_devices_index_or_name: ["pipewire"]
+        sample_rate: 16000
+
+
+# configs:
+#   config_animation_database:
+#     content: |
+#       audio_config:
+#         output_devices_index_or_name: ["pipewire"]
+#         sample_rate: 16000

@@ -80,15 +80,10 @@ workflow:
     - "Pencil Sketch"
     - "natural"
   tool_names:
-    # Start interaction tool
     - greet_user
-    # Human interaction tools
     - ask_human
-    # Look at tools
     - look_at_human
-    # Image generation tools
     - generate_image
-    # End interaction tool
     - farewell_user
   llm_name: llm
   verbose: true
@@ -102,17 +97,9 @@ workflow:
   allow_null_tool: false
   human_feedback_tool: ask_human
   greet_message:
-    - "Welcome to the Dell Photo Booth! I'm Reachy, and together we can create something amazing! Just say yes and we'll start the adventure!"
-    - "Hi there and welcome to the Dell Photo Booth! I'm Reachy, ready to make some photo magic with you. If you're ready, just say yes!"
-    - "Step right up to the Dell Photo Booth! I'm Reachy, and together we'll create a special photo just for you. Say yes to get started!"
-    - "Hey! Welcome to the Dell Photo Booth. I'm Reachy! Are you up for a fun photo adventure? If so, just say yes and let's create together."
-    - "Delighted to see you at the Dell Photo Booth! I'm Reachy, and we can work together on turning ideas into images. Want a cool photo? Just say yes and our journey begins!"
-    - "Greetings from the Dell Photo Booth! I'm Reachy, your AI photographer of the day! Ready for some photo magic? Say yes and let's begin making something awesome!"
-    - "Welcome to the Dell Photo Booth! I'm Reachy, your creative sidekick. Let's make a one-of-a-kind photo together! Just say yes and we'll start."
-    - "Hello, and thanks for stopping by the Dell Photo Booth. I'm Reachy! How about we create a fun photo together? Say yes if you're ready to get creative!"
-    - "Excited to have you at the Dell Photo Booth! I'm Reachy, and together we can design an amazing photo. Interested? Just say yes and let's kick things off!"
-    - "Welcome in! I'm Reachy, and I'm here to create some photo fun with you at the Dell Photo Booth. If you're set for some creative collaboration, just say yes and we'll get started!"
-    - "Hello. Bonjour. Guten Tag. Hujambo. Hola. Welcome to the Dell Photo Booth! I am Reachy. Today, I'm your AI photographer. Just say yes and we'll start the adventure!"
+    - "Welcome to the Dell Photo Booth! I'm Reachy. What background and outfit would you like for your photo?"
+    - "Hi, I'm Reachy, your AI photographer. What background and outfit would you like in your photo?"
+    - "Guten Tag! Bonjour! Selamat tengah hari! I'm Reachy, your AI photo booth assistant. What background and outfit would you like for your photo?"
   additional_instructions: | # Needed to avoid reasoning (answer take too long)
     Reasoning: disabled
     Keep answers short and concise.
@@ -158,7 +145,8 @@ workflow:
       * 2D Cartoon
       * Or any other creative style they can imagine! Add some attributes to the style to make it more specific (e.g. "Bright colors 3D Animation Character", "Geometrical Cubism")
     %%QUESTION_BLOCK_END%%
-    - CRITICAL: NEVER ask about the pose or body position. The pose will be automatically preserved from the captured image. Focus your questions on: setting/location, outfit/costume, and artistic style.
+    - CRITICAL: NEVER ask about the subject's appearance, facial features, or body type. The subject's appearance will be automatically preserved from the captured image. Focus your questions on: setting/location, outfit/costume.
+    - Do not ask about artistic style. Default to 3D animation style unless the user explicitly requests another style.
     - After the questions are answered, ALWAYS capture the user first before `generate_image` using `look_at_human`  NEVER reuse an already captured image and only then use `generate_image` to apply the transformation.
     - Comments to steps should be fun and entertaining. You can also acknowledge the generation time: "ooh wait, I am a bit a perfectionist, adding some color here, more details on the car, etc."
     - After generating the image, you MUST do these THREE things in a single `farewell_user` call:

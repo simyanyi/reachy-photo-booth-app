@@ -3,6 +3,8 @@
 
 FROM ghcr.io/astral-sh/uv:0.8.24-python3.12-bookworm-slim AS builder
 
+ENV UV_HTTP_TIMEOUT=300
+
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean && \

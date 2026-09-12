@@ -40,13 +40,15 @@ services:
 configs:
   config_speech_to_text:
     content: |
-      input_devices_index_or_name: ["Wireless Microphone RX"]
+      input_devices_index_or_name: ["Reachy Mini Audio"]
       audio_config:
-        sample_rate: 48000  
+        sample_rate: 16000
         
 #configs:
 #  config_speech_to_text:
 #    content: |
-#      input_device_index_or_name: ["<your_input_device_index_or_name>"]  # e.g., 11 or "C922 Pro Stream Webcam: USB Audio (hw:3,0)"
+#      input_device_index_or_name: ["<your_input_device_index_or_name>"]  # e.g., 11 or "C922 Pro Stream Webcam: USB Audio (hw:3,0)",  ["Wireless Microphone RX"], ["Reachy Mini Audio"]
 #      audio_config:
 #        sample_rate: <your_device_sample_rate>  # e.g., 16000, 22050, 44100, or 48000
+
+# ["Wireless Microphone RX"] - 48000

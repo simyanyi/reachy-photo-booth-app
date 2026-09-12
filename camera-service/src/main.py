@@ -12,11 +12,19 @@ import pyudev  # type: ignore
 from aiohttp import web
 from configuration import CameraConfig
 from workmesh.config import load_config
-from workmesh.messages import Frame, ImageEncoding, Robot
-from workmesh.service import produces
+from workmesh.messages import (
+    Frame,
+    ImageEncoding,
+    PresenceStatus,
+    Robot,
+    UserDetection,
+    UserState,
+)
+from workmesh.photo_gate import PhotoGate
+from workmesh.service import produces, subscribe
 from workmesh.service_executor import ServiceExecutor
 
-from workmesh import Service, camera_frame_topic
+from workmesh import Service, camera_frame_topic, user_detection_topic, user_state_topic
 
 
 def is_valid_url(url_string: str) -> bool:
@@ -93,6 +101,7 @@ class CameraService(Service):
     def __init__(self, config: CameraConfig) -> None:
         super().__init__(config)
         self._config = config
+        self._photo_gate = PhotoGate()
         self._frame_id = 0
         self._me = getattr(Robot, self._config.robot_id.name)
 
@@ -206,7 +215,29 @@ class CameraService(Service):
             )
             self.logger.debug(f"Sent frame {self._frame_id}")
 
+    @subscribe(user_detection_topic)
+    async def on_user_detection(self, message: UserDetection) -> None:
+        if message.robot_id == self._me:
+            self._photo_gate.observe(message)
+
+    @subscribe(user_state_topic)
+    async def on_user_state(self, message: UserState) -> None:
+        if (
+            message.robot_id == self._me
+            and message.status == PresenceStatus.USER_DISAPPEARED
+        ):
+            self._photo_gate.clear()
+
     async def handle_capture_request(self, _0: web.Request) -> web.Response:
+        # Keep preview streaming, but refuse stills without a fresh person.
+        frame_lag = self._frame_id - self._photo_gate.frame_index
+        if (
+            not self._photo_gate.ready(require_centered=False)
+            or not 0 <= frame_lag <= self._config.fps * self._photo_gate.max_age
+        ):
+            return web.Response(
+                status=409, text="No recently detected person; capture cancelled"
+            )
         self.logger.info("Capturing image...")
         ret, frame = self._camera.read()
         if not ret:
@@ -255,12 +286,18 @@ class CameraService(Service):
             self.logger.info("HTTP server stopped")
 
     async def run(self) -> None:
-        # super().run() # This will "block"
-
-        # Wait for camera's EOF.
-        await asyncio.sleep(2)  # Wait for camera to be ready
-        while not self._is_eof:
-            await asyncio.sleep(1)
+        # Capture eligibility depends on consuming person-detection updates.
+        consumer_task = self.create_task(self._start_consuming())
+        try:
+            await asyncio.sleep(2)  # Wait for camera to be ready
+            while not self._is_eof:
+                if consumer_task.done():
+                    await consumer_task
+                    raise RuntimeError("Camera detection consumer stopped")
+                await asyncio.sleep(1)
+        finally:
+            consumer_task.cancel()
+            await asyncio.gather(consumer_task, return_exceptions=True)
 
     async def stop(self) -> None:
         """Stop the camera service."""

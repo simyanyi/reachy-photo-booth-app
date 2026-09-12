@@ -73,3 +73,11 @@ To use a physical camera, you need to provide its serial number in the configura
 
    Replace `<your_serial_number>` with the value you obtained in the previous step.
 
+
+### Still-photo detection requirement
+
+`GET /capture` now returns HTTP 409 if there is no fresh person detection
+from the tracker, or the detection refers to an old camera frame. Keep the tracker
+running until capture completes. This check applies to direct HTTP requests too;
+preview streaming is unaffected. The photobooth's interaction manager searches
+and checks human presence before acknowledging its capture tool.

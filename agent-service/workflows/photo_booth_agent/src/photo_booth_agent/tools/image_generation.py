@@ -17,7 +17,7 @@ from nat.builder.function_info import FunctionInfo
 from nat.cli.register_workflow import register_function
 from nat.data_models.common import TypedBaseModel
 from nat.data_models.function import FunctionBaseConfig
-from PIL import Image
+from PIL import Image, ImageOps
 from pydantic import Field
 from urllib3.exceptions import MaxRetryError
 
@@ -493,7 +493,7 @@ def _generate_download_page_html(image_download_url: str) -> str:
 #         return image_bytes
 
 def _overlay_dell_logo(
-    image_bytes: bytes, logo_path: str = "/app/src/csg.png"
+    image_bytes: bytes, logo_path: str = "/app/src/Dell_Technologies_logo.png"
 ) -> bytes:
     """Overlay the Dell presentation frame on the generated image.
 
@@ -510,6 +510,12 @@ def _overlay_dell_logo(
         # Load the generated image
         generated_image = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
 
+        generated_image = ImageOps.fit(
+            generated_image,
+            (1800, 1200),
+            method=Image.Resampling.LANCZOS,
+        )
+
         # Check if overlay exists
         if not os.path.exists(logo_path):
             logger.warning(
@@ -523,10 +529,13 @@ def _overlay_dell_logo(
         overlay = Image.open(logo_path).convert("RGBA")
         logger.debug(f"Loaded Dell overlay: {overlay.size}")
 
-        # Resize overlay to exactly match the generated image
-        overlay = overlay.resize(
+        # Preserve the complete frame and logo proportions. Fill the tiny aspect
+        # ratio difference between the source template and 3:2 with its blue edge.
+        overlay = ImageOps.pad(
+            overlay,
             generated_image.size,
-            Image.Resampling.LANCZOS,
+            method=Image.Resampling.LANCZOS,
+            color=overlay.getpixel((10, overlay.height // 2)),
         )
         logger.debug(f"Resized overlay to {overlay.size}")
 
@@ -549,12 +558,6 @@ def _overlay_dell_logo(
         logger.exception(f"Failed to apply Dell overlay: {e}")
         # Return original image if overlay fails
         return image_bytes
-
-    except Exception as e:
-        logger.exception(f"Failed to overlay Dell logo: {e}")
-        # Return original image if overlay fails
-        return image_bytes
-
 
 @register_function(config_type=GenerateImageToolConfig)
 async def generate_image_tool(config: GenerateImageToolConfig, _: Builder):
@@ -627,6 +630,8 @@ async def generate_image_tool(config: GenerateImageToolConfig, _: Builder):
         image_base64_str = base64.b64encode(image_data).decode("utf-8")
         request_data = {
             "prompt": input.prompt,
+            "aspect_ratio": "3:2",
+            "resize_response_image": False,
             "image": f"data:image/png;base64,{image_base64_str}",
             "steps": config.steps,
             "disable_safety_checker": config.disable_safety_checker,
@@ -661,9 +666,9 @@ async def generate_image_tool(config: GenerateImageToolConfig, _: Builder):
         image_object_key = _upload_to_minio(
             internal_minio,
             config.internal_minio.bucket,
-            f"images/generated_{input.action_uuid}.jpg",
+            f"images/generated_{input.action_uuid}.png",
             image_bytes,
-            "image/jpeg",
+            "image/png",
         )
         if not image_object_key:
             raise RuntimeError("Failed to upload image to internal MinIO")

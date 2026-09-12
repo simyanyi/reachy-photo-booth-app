@@ -10,6 +10,7 @@ import statesman
 from configuration import PhotoBoothBotConfig
 from light_manager import LightEffect, LightManager
 from pydantic import Field
+from workmesh.photo_gate import PhotoGate
 from utils import Degrees, Position, Robot
 from workmesh.messages import (
     Color,
@@ -52,6 +53,8 @@ class PhotoBoothBotStateMachine(RobotStateMachine):
     tracking_event: asyncio.Event = Field(default_factory=asyncio.Event)
     user_found_event: asyncio.Event = Field(default_factory=asyncio.Event)
     user_centered_event: asyncio.Event = Field(default_factory=asyncio.Event)
+
+    photo_gate: PhotoGate = Field(default_factory=PhotoGate)
 
     # Animation UUIDs
     _tracking_animation_uuid: str | None = None
@@ -138,6 +141,7 @@ class PhotoBoothBotStateMachine(RobotStateMachine):
         # Reset state variables
         self.user_found_event.clear()
         self.user_centered_event.clear()
+        self.photo_gate.clear()
         self._was_user_found = False
         self._user_last_body_angle = None
 
@@ -182,6 +186,7 @@ class PhotoBoothBotStateMachine(RobotStateMachine):
     async def user_disappeared(self) -> None:
         """User disappears"""
         self.user_found_event.clear()
+        self.photo_gate.clear()
 
         if self.state == self.States.track:
             await self.find_user()
@@ -509,31 +514,29 @@ class PhotoBoothBotStateMachine(RobotStateMachine):
         """Handle entering take picture state"""
         self._logger.info(f"[{self.robot_name}] Entering TAKE_PICTURE")
 
-        # Wait for the user to be centered
-        self._logger.debug(f"[{self.robot_name}] Waiting for user to be centered")
-        try:
-            await asyncio.wait_for(
-                self.user_centered_event.wait(),
-                timeout=self.config.center_user_timeout,
-            )
-            self._logger.debug(f"[{self.robot_name}] User is centered")
-        except TimeoutError:
-            self._logger.warning(
-                f"[{self.robot_name}] User timed out while centering. "
-                "Taking picture anyway."
-            )
-
-        # Pause the tracking animation
+        self.require_photo_subject()
+        # Detection stays active through countdown and the actual camera request.
+        # The caller validates a fresh person detection before this transition.
         if self._tracking_animation_uuid:
             await self.track_pause(self._tracking_animation_uuid)
 
-        # Stop the tracker service
-        await self.service_off(ServiceName.TRACKER)
+    async def wait_for_photo_subject(self) -> None:
+        """Require a new person detection; framing is handled by head tracking."""
+        started = time.monotonic()
+        async with asyncio.timeout(self.config.center_user_timeout):
+            while not self.photo_gate.ready(after=started, require_centered=False):
+                await asyncio.sleep(0.05)
+
+    def require_photo_subject(self) -> None:
+        if not self.photo_gate.ready(require_centered=False):
+            raise RuntimeError("Photo cancelled: no recently detected person")
 
     @statesman.exit_state(States.take_picture)  # type: ignore
     async def on_exit_take_picture(self) -> None:
         """Handle exiting take picture state"""
         self._logger.info(f"[{self.robot_name}] Exiting TAKE_PICTURE")
+        if self.light_manager is not None:
+            await self.light_manager.light_off("picture_preparation")
 
         # Stop the tracking animation
         if self._tracking_animation_uuid:
@@ -673,55 +676,49 @@ class PhotoBoothBotStateMachine(RobotStateMachine):
                 ),
             )
 
-        async with self.is_talking_lock:
-            self._is_talking = True
-            if not self.config.enable_listening_while_speaking:
-                # Turn off STT service
-                await self.service_off(ServiceName.STT)
-
+        talking_uuid = None
+        paused_tracking = self._tracking_animation_uuid
         try:
+            async with self.is_talking_lock:
+                self._is_talking = True
+                if not self.config.enable_listening_while_speaking:
+                    await self.service_off(ServiceName.STT)
+            if paused_tracking:
+                await self.track_pause(paused_tracking)
             # Send TTS request message
             speech_uuid = await self.request_human_speech(script, action_uuid)
 
             # Wait for the speech to start to sync with the talking animation
             speech_success = await self.wait_for_clip_started(speech_uuid)
 
-            # Bot is TALKING
-            # Loop if the speech was successful,
-            # otherwise just run it once to fake talking
-            if look_direction in ["left", "right"]:
-                if look_direction == "left":
-                    talking_uuid = await self.play_clip(
-                        clip_name="talkingLeftShoulder",
-                        priority=0,
-                        opacity=1,
-                        loop=speech_success,
-                    )
-                else:
-                    talking_uuid = await self.play_clip(
-                        clip_name="talkingRightShoulder",
-                        priority=0,
-                        opacity=1,
-                        loop=speech_success,
-                    )
-            else:
-                talking_uuid = await self.play_clip(
-                    clip_name="talking", priority=0, opacity=1, loop=speech_success
-                )
+            talking_uuid = await self.play_clip(
+                clip_name="talkingForward", priority=0, opacity=1, loop=speech_success
+            )
 
             # Wait until the speech is done playing and stop the talking animation
             await self.wait_for_clip(speech_uuid)
-            await self.stop_clip(talking_uuid)
         finally:
-            # Turn off the talking light
-            assert self.light_manager is not None
-            await self.light_manager.light_off("talking")
-
-            async with self.is_talking_lock:
-                self._is_talking = False
-                # Turn on the STT service if still tracking the user
-                if self.state == self.States.track:
-                    await self.service_on(ServiceName.STT)
+            # One failed cleanup must not leave listening disabled forever.
+            try:
+                if talking_uuid:
+                    await self.stop_clip(talking_uuid)
+            finally:
+                try:
+                    if (
+                        paused_tracking
+                        and self._tracking_animation_uuid == paused_tracking
+                        and self.state == self.States.track
+                    ):
+                        await self.track_pause(paused_tracking, enable=False)
+                finally:
+                    try:
+                        assert self.light_manager is not None
+                        await self.light_manager.light_off("talking")
+                    finally:
+                        async with self.is_talking_lock:
+                            self._is_talking = False
+                            if self.state == self.States.track:
+                                await self.service_on(ServiceName.STT)
 
     async def handle_listening(self) -> None:
         """Handle listening event from any state"""
@@ -791,6 +788,7 @@ class PhotoBoothBotStateMachine(RobotStateMachine):
 
     async def handle_take_picture(self) -> None:
         """Handle taking picture event from any state"""
+        self.require_photo_subject()
         self._logger.info(f"[{self.robot_name}] Taking picture...")
 
         # Set light when taking a picture
@@ -879,12 +877,22 @@ class PhotoBoothBotStateMachine(RobotStateMachine):
             await self.tracking_event.wait()
             await self.handle_talking("Hey! I need your help!")
         elif command == "TakePicture":
-            await self.safe_trigger_event("find_user")
-            await self.tracking_event.wait()
-            await self.safe_trigger_event("take_picture", stop_tracking=False)
-            await self.handle_prepare_for_picture()
-            await self.handle_take_picture()
-            await self.safe_trigger_event("think")
+            try:
+                async with asyncio.timeout(30):
+                    await self.safe_trigger_event("find_user")
+                    await self.tracking_event.wait()
+                    await self.wait_for_photo_subject()
+                    await self.safe_trigger_event("take_picture", stop_tracking=False)
+                    if self.state != self.States.take_picture:
+                        raise RuntimeError("Could not enter photo preparation")
+                    await self.handle_prepare_for_picture()
+                    await self.wait_for_photo_subject()
+                    await self.handle_take_picture()
+            except (TimeoutError, RuntimeError) as exc:
+                self._logger.warning(f"Photo cancelled: {exc}")
+            finally:
+                if self.state == self.States.take_picture:
+                    await self.safe_trigger_event("think")
         elif command.lower() == "abort":
             # Handled in the interaction manager
             pass

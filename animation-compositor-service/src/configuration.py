@@ -71,12 +71,18 @@ class CompositorConfig(BaseConfig):
     )
     joint_limits: dict[str, Range] = Field(
         default={
-            "body_angle": Range(min=-170, max=170),
+            # "body_angle": Range(min=-170, max=170),
+            # "r_antenna_angle": Range(min=-170, max=170),
+            # "l_antenna_angle": Range(min=-170, max=170),
+            # "head_rotation_roll": Range(min=-20, max=20),
+            # "head_rotation_pitch": Range(min=-30, max=30),
+            # "head_rotation_yaw": Range(min=-170, max=170),
+            "body_angle": Range(min=0, max=0),
+            "head_rotation_yaw": Range(min=-5, max=5),
+            "head_rotation_pitch": Range(min=-15, max=15),
+            "head_rotation_roll": Range(min=-10, max=10),
             "r_antenna_angle": Range(min=-170, max=170),
-            "l_antenna_angle": Range(min=-170, max=170),
-            "head_rotation_roll": Range(min=-20, max=20),
-            "head_rotation_pitch": Range(min=-30, max=30),
-            "head_rotation_yaw": Range(min=-170, max=170),
+            "l_antenna_angle": Range(min=-170, max=170)
         },
         description="Joint limits for the animation compositor.",
     )

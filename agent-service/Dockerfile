@@ -31,6 +31,8 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
 COPY --chown=app:app ./agent-service /app
+# Keep the installed workflow in sync with source, including cached local wheels.
+COPY --chown=app:app ./agent-service/workflows/photo_booth_agent/src/photo_booth_agent /app/.venv/lib/python3.12/site-packages/photo_booth_agent
 COPY --chown=app:app ./agent-service/src/Dell_Technologies_logo.png /app/src/
 
 USER app

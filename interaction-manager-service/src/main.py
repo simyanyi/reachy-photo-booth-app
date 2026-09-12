@@ -19,6 +19,7 @@ from workmesh.messages import (
     RobotFrame,
     ToolStatus,
     TrackingStatus,
+    UserDetection,
     UserState,
     UserTrackingStatus,
     UserUtterance,
@@ -36,6 +37,7 @@ from workmesh import (
     remote_control_command_topic,
     robot_frame_topic,
     tool_status_topic,
+    user_detection_topic,
     user_state_topic,
     user_tracking_status_topic,
     user_utterance_topic,
@@ -118,6 +120,11 @@ class InteractionManagerService(Service):
         elif message.status == PresenceStatus.USER_DISAPPEARED:
             self.logger.info("User disappeared")
             await self.photo_bot.user_disappeared()
+
+    @subscribe(user_detection_topic)
+    async def on_user_detection(self, message: UserDetection) -> None:
+        if message.robot_id == self.photo_bot.robot_id.to_proto():
+            self.photo_bot.photo_gate.observe(message)
 
     # USER TRACKING STATUS
     @subscribe(user_tracking_status_topic)
@@ -230,7 +237,11 @@ class InteractionManagerService(Service):
             )
 
             if message.status == ToolStatus.Status.TOOL_CALL_STARTED:
-                if tool_name in self.running_tools and tool_name not in human_tools:
+                if (
+                    tool_name in self.running_tools
+                    and tool_name not in human_tools
+                    and tool_name not in take_picture_tools
+                ):
                     self.logger.warning(
                         f"Tool '{tool_name}' already started. "
                         f"Don't execute actions again."
@@ -331,40 +342,46 @@ class InteractionManagerService(Service):
                         )
                         await self.photo_bot.start_user_utterance(started_message)
 
-                # Taking picture
+                # A photo tool must never fall through to the generic success ACK.
                 elif tool_name in take_picture_tools:
-                    # Move to look at the user
-                    if self.photo_bot.state in [
-                        PhotoBoothBotStateMachine.States.think,
-                        PhotoBoothBotStateMachine.States.look_at,
-                    ]:
-                        # Robot looks for user
-                        self.logger.info("Robot looks for the user")
-                        self.last_look_at = KeyPosition.USER
-
-                        # If the user is found, the robot is tracking
-                        if await self._find_user():
-                            # Transition to take the picture
+                    try:
+                        async with asyncio.timeout(45):
+                            if not await self._find_user():
+                                raise RuntimeError("No person found")
+                            await self.photo_bot.wait_for_photo_subject()
                             await self.photo_bot.safe_trigger_event(
                                 "take_picture", stop_tracking=False
                             )
-
-                            # Robot talks to the user
+                            if self.photo_bot.state != self.photo_bot.States.take_picture:
+                                raise RuntimeError("Could not enter photo preparation")
                             await self._speak(tool_name, message.status)
-
-                            # Prepare for picture
                             await self.photo_bot.handle_prepare_for_picture()
+                            await self.photo_bot.wait_for_photo_subject()
+                            self.photo_bot.require_photo_subject()
                             await self._send_tool_processed_message(message)
-
-                            # Take picture animation
+                    except (TimeoutError, RuntimeError) as exc:
+                        self.logger.warning(f"Photo cancelled: {exc}")
+                        await self.publish(
+                            tool_status_topic,
+                            ToolStatus(
+                                action_uuid=message.action_uuid,
+                                robot_id=message.robot_id,
+                                name=message.name,
+                                status=ToolStatus.Status.TOOL_CALL_FAILED,
+                                timestamp=int(time.time() * 1000),
+                                response=f"Photo cancelled: {exc}",
+                            ),
+                        )
+                    else:
+                        # Capture presence is checked again by the camera service.
+                        try:
                             await self.photo_bot.handle_take_picture()
-
-                            # Move to think state after the picture is taken
+                        except RuntimeError as exc:
+                            self.logger.warning(str(exc))
+                    finally:
+                        if self.photo_bot.state == self.photo_bot.States.take_picture:
                             await self.photo_bot.safe_trigger_event("think")
-
-                            # We already sent the tool processed message,
-                            # so we continue
-                            continue
+                    continue
 
                 # End the interaction
                 elif tool_name in end_tools:
@@ -489,17 +506,17 @@ class InteractionManagerService(Service):
             self._wait_for_robot_to_go_to_sleep(), name="robot_went_to_sleep"
         )
 
-        done, pending = await asyncio.wait(
-            {tracking_task, sleep_task}, return_when=asyncio.FIRST_COMPLETED
-        )
-
-        # Cancel any pending tasks
-        for task in pending:
-            task.cancel()
-
-        task_name = done.pop().get_name()
-        self.logger.debug(f"Task Finished: {task_name}")
-        return task_name
+        tasks = {tracking_task, sleep_task}
+        try:
+            done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            if sleep_task in done:
+                return sleep_task.get_name()
+            return tracking_task.get_name()
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _wait_for_robot_to_go_to_sleep(self) -> None:
         """Wait until the robot transitions to the 'sleep' state."""
