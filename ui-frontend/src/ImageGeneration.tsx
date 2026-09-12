@@ -41,16 +41,13 @@ export default function ImageGeneration({
       {generatedImageUrl ? (
         <img
           src={generatedImageUrl}
-          className={classnames("object-cover", className)}
+          className="h-full w-full object-contain"
         />
       ) : (
         <>
           <canvas
             ref={canvasRef}
-            className={classnames(
-              "object-cover opacity-30 [image-rendering:pixelated]",
-              className
-            )}
+            className="h-full w-full object-cover opacity-30 [image-rendering:pixelated]"
           />
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white [text-shadow:0_2px_8px_rgba(0,0,0,0.8)]">
             <div className="text-7xl font-bold">Generating image...</div>
