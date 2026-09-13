@@ -509,12 +509,7 @@ def _overlay_dell_logo(
 
         # Load the generated image
         generated_image = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
-
-        generated_image = ImageOps.fit(
-            generated_image,
-            (1800, 1200),
-            method=Image.Resampling.LANCZOS,
-        )
+        logger.debug(f"Loaded generated image: {generated_image.size}")
 
         # Check if overlay exists
         if not os.path.exists(logo_path):
@@ -529,23 +524,63 @@ def _overlay_dell_logo(
         overlay = Image.open(logo_path).convert("RGBA")
         logger.debug(f"Loaded Dell overlay: {overlay.size}")
 
-        # Preserve the complete frame and logo proportions. Fill the tiny aspect
-        # ratio difference between the source template and 3:2 with its blue edge.
-        overlay = ImageOps.pad(
-            overlay,
-            generated_image.size,
-            method=Image.Resampling.LANCZOS,
-            color=overlay.getpixel((10, overlay.height // 2)),
+        output_size = (1800, 1200)
+        overlay = overlay.resize(
+            output_size,
+            resample=Image.Resampling.LANCZOS,
         )
         logger.debug(f"Resized overlay to {overlay.size}")
 
+        # Ignore the source PNG's faintly transparent outermost pixels when
+        # locating the actual photo opening in the frame.
+        frame_alpha = overlay.getchannel("A")
+        frame_alpha.paste(255, (0, 0, overlay.width, 2))
+        frame_alpha.paste(
+            255,
+            (0, overlay.height - 2, overlay.width, overlay.height),
+        )
+        frame_alpha.paste(255, (0, 0, 2, overlay.height))
+        frame_alpha.paste(
+            255,
+            (overlay.width - 2, 0, overlay.width, overlay.height),
+        )
+        photo_mask = frame_alpha.point(lambda alpha: 255 if alpha < 128 else 0)
+        photo_bounds = photo_mask.getbbox()
+        if photo_bounds is None:
+            raise ValueError(
+                "Dell overlay does not contain a transparent photo opening"
+            )
+
+        photo_size = (
+            photo_bounds[2] - photo_bounds[0],
+            photo_bounds[3] - photo_bounds[1],
+        )
+        generated_image = ImageOps.fit(
+            generated_image,
+            photo_size,
+            method=Image.Resampling.LANCZOS,
+        )
+        logger.debug(
+            f"Resized generated image to {generated_image.size} for opening "
+            f"at {photo_bounds}"
+        )
+
+        background_color = (
+            overlay.getpixel((10, overlay.height // 2))[:3] + (255,)
+        )
+        composed_image = Image.new("RGBA", output_size, background_color)
+        composed_image.alpha_composite(
+            generated_image,
+            dest=(photo_bounds[0], photo_bounds[1]),
+        )
+
         # Composite the overlay on top of the generated image
-        generated_image.alpha_composite(overlay)
+        composed_image.alpha_composite(overlay)
         logger.debug("Applied Dell overlay")
 
         # Save the result
         output = io.BytesIO()
-        generated_image.save(output, format="PNG")
+        composed_image.save(output, format="PNG")
         result_bytes = output.getvalue()
 
         logger.debug(
