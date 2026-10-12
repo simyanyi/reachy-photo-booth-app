@@ -40,9 +40,9 @@ services:
 configs:
   config_speech_to_text:
     content: |
-      input_devices_index_or_name: ["Reachy Mini Audio"]
+      input_devices_index_or_name: ["Wireless Microphone RX"]
       audio_config:
-        sample_rate: 16000
+        sample_rate: 48000
         
 #configs:
 #  config_speech_to_text:

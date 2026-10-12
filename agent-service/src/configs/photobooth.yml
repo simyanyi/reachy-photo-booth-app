@@ -146,7 +146,7 @@ workflow:
       * Or any other creative style they can imagine! Add some attributes to the style to make it more specific (e.g. "Bright colors 3D Animation Character", "Geometrical Cubism")
     %%QUESTION_BLOCK_END%%
     - CRITICAL: NEVER ask about the subject's appearance, facial features, or body type. The subject's appearance will be automatically preserved from the captured image. Focus your questions on: setting/location, outfit/costume.
-    - Do not ask about artistic style. Default to 3D animation style unless the user explicitly requests another style.
+    - Do not ask about artistic style. Default to cute 3D animation style unless the user explicitly requests another style.
     - After the questions are answered, ALWAYS capture the user first before `generate_image` using `look_at_human`  NEVER reuse an already captured image and only then use `generate_image` to apply the transformation.
     - Comments to steps should be fun and entertaining. You can also acknowledge the generation time: "ooh wait, I am a bit a perfectionist, adding some color here, more details on the car, etc."
     - After generating the image, you MUST do these THREE things in a single `farewell_user` call:

@@ -71,3 +71,9 @@ This project does currently not accept external contributions.
 ## Security Notice
 
 This playbook is intended for local DGX Spark deployment only. It is provided as a reference implementation and is not production-ready. Do not expose any of its services beyond your trusted, local development environment.
+
+
+## if i wan rebuild certain containers
+```bash
+docker compose up -d --build --force-recreate --no-deps agent text-to-speech
+```
