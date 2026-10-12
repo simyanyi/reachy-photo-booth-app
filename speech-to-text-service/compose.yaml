@@ -37,6 +37,8 @@ services:
     configs:
      - source: config_speech_to_text
        target: /config.yaml
+
+# either reachy default audio input or own external microphone name, comment out the one you don't want to use
 configs:
   config_speech_to_text:
     content: |
@@ -47,8 +49,8 @@ configs:
 #configs:
 #  config_speech_to_text:
 #    content: |
-#      input_device_index_or_name: ["<your_input_device_index_or_name>"]  # e.g., 11 or "C922 Pro Stream Webcam: USB Audio (hw:3,0)",  ["Wireless Microphone RX"], ["Reachy Mini Audio"]
+#      input_device_index_or_name: ["<your_input_device_index_or_name>"]  # e.g.["Wireless Microphone RX"], ["Reachy Mini Audio"]
 #      audio_config:
-#        sample_rate: <your_device_sample_rate>  # e.g., 16000, 22050, 44100, or 48000
+#        sample_rate: <your_device_sample_rate>  # e.g., 16000, 48000
 
 # ["Wireless Microphone RX"] - 48000

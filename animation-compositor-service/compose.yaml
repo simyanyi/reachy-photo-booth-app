@@ -37,6 +37,7 @@ services:
      - source: config_animation_compositor
        target: /config.yaml
 
+# either reachy default audio output or pipewire (aka bluetooth speaker), comment out the one you don't want to use
 configs:
   config_animation_compositor:
     content: |
