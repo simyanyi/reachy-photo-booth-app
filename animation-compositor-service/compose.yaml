@@ -49,7 +49,5 @@ configs:
 #   config_animation_database:
 #     content: |
 #       audio_config:
-#         output_devices_index_or_name: ["pipewire"]
+#         output_devices_index_or_name: ["Reachy Mini Audio"]
 #         sample_rate: 16000
-
-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
